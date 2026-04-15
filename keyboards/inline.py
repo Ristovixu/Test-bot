@@ -110,7 +110,7 @@ def back_to_menu_keyboard():
 def admin_menu():
     """Админ-панель"""
     keyboard = InlineKeyboardBuilder()
-    keyboard.row(InlineKeyboardButton(text="➕ Добавить рабочий день", callback_data="admin_add_day"))
+    keyboard.row(InlineKeyboardButton(text="📅 Управление днями", callback_data="admin_manage_days"))
     keyboard.row(InlineKeyboardButton(text="➕ Добавить слоты", callback_data="admin_add_slots"))
     keyboard.row(InlineKeyboardButton(text="➖ Удалить слоты", callback_data="admin_delete_slots"))
     keyboard.row(InlineKeyboardButton(text="🔒 Закрыть день", callback_data="admin_close_day"))

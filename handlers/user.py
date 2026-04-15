@@ -42,13 +42,37 @@ async def cmd_start(message: Message, db: Database, bot: Bot):
         )
         return
     
-    await message.answer(
+    # Приветственное сообщение с изображением
+    welcome_text = (
         f"👋 <b>Добро пожаловать, {message.from_user.first_name}!</b>\n\n"
-        "Я помогу вам записаться на маникюр.\n"
-        "Выберите действие:",
-        reply_markup=main_menu(),
-        parse_mode="HTML"
+        "💅 <b>Салон красоты «Beauty Ind»</b>\n\n"
+        "✨ Профессиональный маникюр и педикюр\n"
+        "🎨 Индивидуальный подход к каждому клиенту\n"
+        "💎 Качественные материалы и инструменты\n\n"
+        "Выберите действие:"
     )
+    
+    # Пытаемся отправить фото приветствия
+    try:
+        # Здесь можно указать URL изображения или файл
+        # await message.answer_photo(
+        #     photo="https://example.com/welcome_image.jpg",
+        #     caption=welcome_text,
+        #     reply_markup=main_menu(),
+        #     parse_mode="HTML"
+        # )
+        await message.answer(
+            welcome_text,
+            reply_markup=main_menu(),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка отправки приветственного фото: {e}")
+        await message.answer(
+            welcome_text,
+            reply_markup=main_menu(),
+            parse_mode="HTML"
+        )
 
 
 @router.callback_query(F.data == "back_to_menu")
@@ -69,10 +93,22 @@ async def show_prices(callback: CallbackQuery):
     await callback.answer()
     
     prices_text = (
-        "💰 <b>Прайс-лист</b>\n\n"
-        "💅 Френч — <b>1000₽</b>\n"
-        "🔲 Квадрат — <b>500₽</b>\n\n"
-        "Для записи вернитесь в главное меню."
+        "💰 <b>Прайс-лист услуг</b>\n\n"
+        "💅 <b>Маникюр:</b>\n"
+        "• Классический маникюр — от <b>1500₽</b>\n"
+        "• Французский маникюр — от <b>1800₽</b>\n"
+        "• Гелевый маникюр — от <b>2000₽</b>\n"
+        "• Маникюр + покрытие гель-лаком — от <b>2500₽</b>\n\n"
+        "🦶 <b>Педикюр:</b>\n"
+        "• Классический педикюр — от <b>2000₽</b>\n"
+        "• Комбинированный педикюр — от <b>2500₽</b>\n"
+        "• Педикюр + покрытие гель-лаком — от <b>3000₽</b>\n\n"
+        "🎨 <b>Дизайн и украшения:</b>\n"
+        "• Простой дизайн — от <b>300₽</b>\n"
+        "• Сложный дизайн — от <b>500₽</b>\n"
+        "• Стразы/Swarovski — от <b>100₽</b> за камень\n\n"
+        "💡 <i>Цены могут варьироваться в зависимости от сложности работы</i>\n"
+        "📞 Для точного расчета свяжитесь с мастером"
     )
     
     await callback.message.edit_text(

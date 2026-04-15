@@ -6,6 +6,9 @@
 import aiosqlite
 from datetime import datetime, timedelta
 from config import DATABASE_PATH
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -63,8 +66,13 @@ class Database:
                     (date,)
                 )
                 await db.commit()
+                logger.info(f"Рабочий день {date} добавлен в базу данных")
                 return True
             except aiosqlite.IntegrityError:
+                logger.warning(f"Рабочий день {date} уже существует")
+                return False
+            except Exception as e:
+                logger.error(f"Ошибка при добавлении рабочего дня {date}: {e}")
                 return False
 
     async def close_day(self, date: str):
@@ -93,7 +101,9 @@ class Database:
                 (start_date, end_date)
             ) as cursor:
                 rows = await cursor.fetchall()
-                return [row[0] for row in rows]
+                dates = [row[0] for row in rows]
+                logger.info(f"Найдено {len(dates)} рабочих дней в диапазоне {start_date} - {end_date}")
+                return dates
 
     async def is_day_closed(self, date: str):
         """Проверить, закрыт ли день"""

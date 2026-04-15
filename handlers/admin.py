@@ -17,6 +17,7 @@ from keyboards.inline import (
 from utils.states import AdminStates
 from config import ADMIN_ID, WORKING_HOURS_START, WORKING_HOURS_END, SLOT_DURATION
 import logging
+import calendar
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -58,23 +59,166 @@ async def admin_panel_callback(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# === ДОБАВЛЕНИЕ РАБОЧЕГО ДНЯ ===
+# === ИНТЕРАКТИВНОЕ УПРАВЛЕНИЕ РАБОЧИМИ ДНЯМИ ===
 
-@router.callback_query(F.data == "admin_add_day")
-async def admin_add_day_start(callback: CallbackQuery, state: FSMContext):
-    """Начало добавления рабочего дня"""
+@router.callback_query(F.data == "admin_manage_days")
+async def admin_manage_days_start(callback: CallbackQuery):
+    """Начало управления рабочими днями"""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет доступа!", show_alert=True)
         return
     
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    
     await callback.message.edit_text(
-        "📅 <b>Добавление рабочего дня</b>\n\n"
-        "Введите дату в формате <code>ДД.ММ.ГГГГ</code>\n"
-        "Например: 25.12.2024",
+        f"📅 <b>Управление рабочими днями</b>\n\n"
+        f"Выберите месяц для управления:",
+        reply_markup=month_selection_keyboard(current_year),
         parse_mode="HTML"
     )
-    await state.set_state(AdminStates.waiting_for_date)
     await callback.answer()
+
+
+def month_selection_keyboard(year: int):
+    """Клавиатура выбора месяца"""
+    keyboard = InlineKeyboardBuilder()
+    
+    months = [
+        "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+        "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+    ]
+    
+    for i, month_name in enumerate(months, 1):
+        keyboard.add(InlineKeyboardButton(
+            text=f"{i:02d} - {month_name}",
+            callback_data=f"month_{year}_{i:02d}"
+        ))
+    
+    keyboard.adjust(3)  # 3 кнопки в ряд
+    keyboard.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+    return keyboard.as_markup()
+
+
+@router.callback_query(F.data.startswith("month_"))
+async def admin_select_month(callback: CallbackQuery, db: Database):
+    """Выбор месяца для управления днями"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    _, year, month = callback.data.split("_")
+    year, month = int(year), int(month)
+    
+    # Получаем все дни месяца
+    days_in_month = calendar.monthrange(year, month)[1]
+    
+    # Получаем текущие рабочие дни
+    working_days = set()
+    start_date = f"{year}-{month:02d}-01"
+    end_date = f"{year}-{month:02d}-{days_in_month:02d}"
+    
+    existing_days = await db.get_working_days(start_date, end_date)
+    for day in existing_days:
+        day_num = int(day.split("-")[2])
+        working_days.add(day_num)
+    
+    month_name = calendar.month_name[month]
+    
+    await callback.message.edit_text(
+        f"📅 <b>{month_name} {year}</b>\n\n"
+        f"Выберите дни для изменения статуса:\n"
+        f"🟢 - рабочий день\n"
+        f"🔴 - выходной\n\n"
+        f"Рабочих дней в этом месяце: {len(working_days)}",
+        reply_markup=days_management_keyboard(year, month, working_days),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+def days_management_keyboard(year: int, month: int, working_days: set):
+    """Клавиатура управления днями месяца"""
+    keyboard = InlineKeyboardBuilder()
+    
+    days_in_month = calendar.monthrange(year, month)[1]
+    
+    # Создаем кнопки для каждого дня
+    for day in range(1, days_in_month + 1):
+        date_str = f"{year}-{month:02d}-{day:02d}"
+        status = "🟢" if day in working_days else "🔴"
+        keyboard.add(InlineKeyboardButton(
+            text=f"{status} {day}",
+            callback_data=f"toggle_day_{date_str}"
+        ))
+    
+    keyboard.adjust(7)  # 7 дней в неделю
+    keyboard.row(InlineKeyboardButton(text="🔄 Обновить", callback_data=f"month_{year}_{month:02d}"))
+    keyboard.row(InlineKeyboardButton(text="🔙 К месяцам", callback_data="admin_manage_days"))
+    keyboard.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="admin"))
+    return keyboard.as_markup()
+
+
+@router.callback_query(F.data.startswith("toggle_day_"))
+async def admin_toggle_day(callback: CallbackQuery, db: Database):
+    """Переключение статуса дня"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    date_str = callback.data.replace("toggle_day_", "")
+    
+    # Проверяем, существует ли день в расписании
+    existing_days = await db.get_working_days(date_str, date_str)
+    
+    if existing_days:
+        # День существует, удаляем его
+        await db.close_day(date_str)  # Помечаем как закрытый
+        await callback.answer("День сделан выходным")
+    else:
+        # День не существует, добавляем его
+        success = await db.add_working_day(date_str)
+        if success:
+            # Генерируем слоты для этого дня
+            from config import WORKING_HOURS_START, WORKING_HOURS_END, SLOT_DURATION
+            slots_added = 0
+            current_time = datetime.strptime(f"{WORKING_HOURS_START}:00", "%H:%M")
+            end_time = datetime.strptime(f"{WORKING_HOURS_END}:00", "%H:%M")
+            
+            while current_time < end_time:
+                time_str = current_time.strftime("%H:%M")
+                await db.add_time_slot(date_str, time_str)
+                slots_added += 1
+                current_time += timedelta(minutes=SLOT_DURATION)
+            
+            await callback.answer(f"Добавлен рабочий день с {slots_added} слотами")
+        else:
+            await callback.answer("Ошибка при добавлении дня")
+    
+    # Обновляем клавиатуру
+    year, month, day = map(int, date_str.split("-"))
+    days_in_month = calendar.monthrange(year, month)[1]
+    
+    working_days = set()
+    start_date = f"{year}-{month:02d}-01"
+    end_date = f"{year}-{month:02d}-{days_in_month:02d}"
+    
+    existing_days = await db.get_working_days(start_date, end_date)
+    for day_str in existing_days:
+        day_num = int(day_str.split("-")[2])
+        working_days.add(day_num)
+    
+    month_name = calendar.month_name[month]
+    
+    await callback.message.edit_text(
+        f"📅 <b>{month_name} {year}</b>\n\n"
+        f"Выберите дни для изменения статуса:\n"
+        f"🟢 - рабочий день\n"
+        f"🔴 - выходной\n\n"
+        f"Рабочих дней в этом месяце: {len(working_days)}",
+        reply_markup=days_management_keyboard(year, month, working_days),
+        parse_mode="HTML"
+    )
 
 
 @router.message(AdminStates.waiting_for_date)
