@@ -5,9 +5,10 @@
 
 import aiosqlite
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from datetime import datetime, timedelta
 from database.db import Database
 from keyboards.inline import (
