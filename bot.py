@@ -28,13 +28,11 @@ logger = logging.getLogger(__name__)
 
 async def main():
     """Главная функция запуска бота"""
-    # Инициализация бота и диспетчера с увеличенным таймаутом
+    # Инициализация бота и диспетчера
     from aiogram.client.session.aiohttp import AiohttpSession
-    from aiohttp import ClientTimeout
-    import ssl
     
-    # Увеличиваем таймаут до 120 секунд (по умолчанию 20)
-    session = AiohttpSession(timeout=ClientTimeout(total=120, connect=60, sock_read=60))
+    # Создаем сессию (aiogram 3.x сам управляет таймаутами)
+    session = AiohttpSession()
     bot = Bot(token=BOT_TOKEN, session=session)
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
